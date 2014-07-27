@@ -79,7 +79,7 @@ class Enemy(object):
             self.damage_cd += 1
         if self.damage_cd >= self.damage_wait:
             self.damage_cooldown = False
-            self.damage_cd = 0        
+            self.damage_cd = 1        
 
 class Eye(Enemy):
     def __init__(self):
