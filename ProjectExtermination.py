@@ -35,7 +35,10 @@ WAVES = {
     'invasion': INVASION_WAVE,
     'speedy': SPEEDY_WAVE
     }
-    
+
+WAVE_LEVEL_FACTOR = [
+    1.0, 1.1, 1.25, 1.50, 1.75, 2.0, 2.33, 2.66, 3.00, 3.5, 4.0, 5.0, 7.5, 10.0
+    ]
 
 pygame.init()
 
@@ -50,9 +53,16 @@ class Game(object):
         self.wave_interval = 150
         self.fps = 60
         self.wave_time = 0
+        self.enemies_leaked = 0
         self.waves = WAVES
         self.wave_types = [ 'basic', 'tert', 'grunt', 'invasion', 'speedy' ]
+        self.wave_level = 0
+        self.waves_passed = 0
+        self.wave_level_up = []
+        for i in range(0, len(WAVE_LEVEL_FACTOR)):
+            self.wave_level_up.append(i*5)
         self.bullets = []
+        self.explosions = []
         self.enemies = []
         self.text_objects = []
         self.powerup_thresholds = []
@@ -62,17 +72,24 @@ class Game(object):
 
     def handle_waves(self):
         game.wave_time += 1
+        if game.waves_passed >= self.wave_level_up[self.wave_level]:
+            self.wave_level += 1
         if game.wave_time >= game.wave_interval:
+            game.waves_passed += 1
             game.wave_time = 0
             random_wave = random.randint(0, len(WAVES)-1)
             wave_type = game.wave_types[random_wave]
             
-            for i in range (0, game.waves[wave_type]['eye']):
+            for i in range(0, int(game.waves[wave_type]['eye'] * WAVE_LEVEL_FACTOR[self.wave_level])):
                 game.enemies.append(Eye())
                 game.enemies[i].rect.topleft = (game.enemies[i].x, game.enemies[i].y)
-            for i in range (0, game.waves[wave_type]['grunt']):
+            for i in range(0, int(game.waves[wave_type]['grunt'] * WAVE_LEVEL_FACTOR[self.wave_level])):
                 game.enemies.append(Grunt())
                 game.enemies[i].rect.topleft = (game.enemies[i].x, game.enemies[i].y)
+
+            for i in range(0, int(game.waves[wave_type]['speedy'] * WAVE_LEVEL_FACTOR[self.wave_level])):
+                game.enemies.append(Speedy())
+                game.enemies[i].rect.topleft = (game.enemies[i].x, self.enemies[i].y)
 
     def update_text(self):
         for i in range(0, len(game.text_objects)):
@@ -81,38 +98,28 @@ class Game(object):
                 game.text_objects[i].string = " Powerups: %i " % player.powerups
             elif game.text_objects[i].text_type == 'info':
                 game.text_objects[i].string = " | Press 1 to activate powerup | Spacebar to shoot basic gun | Q to shoot explosive gun | "
+            elif game.text_objects[i].text_type == 'score':
+                game.text_objects[i].string = " | Level: %i | Score: %i | Enemies leaked: %i | " % (game.wave_level, player.score, game.enemies_leaked)
             game.text_objects[i].surf = game.text_objects[i].font.render(
                 game.text_objects[i].string, game.text_objects[i].aa, game.text_objects[i].color, game.text_objects[i].bg_color)
             game.screen.blit(game.text_objects[i].surf, game.text_objects[i].rect)
-        
 
     def update_bullets(self):
         try:
+            
             for i in range(0, len(game.bullets)):
+                if game.bullets[i].exploded:
+                    game.bullets[i].alive = False
+                    game.explosions.append(Explosion(game.bullets[i].bullet_id))
                 if game.bullets[i].y >= -200:
-                    if game.bullets[i].exploded:
-                        if game.bullets[i].explosion_timer >= game.bullets[i].explosion_duration:
-                            game.bullets[i].alive = False
-                        # This is where individual gun type explosions happen. Fix this later.
-                        """
-                        if game.bullets[i].alive and game.bullets[i].bullet_id == 2:
-                            game.screen.blit(game.bullets[i].explosion, game.bullets[i].rect)
-                        else:
-                            game.screen.blit(game.bullets[i].explosion, game.bullets[i].rect)
-                        """
-                        if game.bullets[i].alive:
-                            game.screen.blit(game.bullets[i].explosion, game.bullets[i].rect)
-                        game.bullets[i].explosion_timer += 1
-                        
-                    else:
-                        if game.bullets[i].alive:
-                            game.screen.blit(game.bullets[i].image, game.bullets[i].rect)
-                    
-                    game.bullets[i].alive = True
+                    if game.bullets[i].alive:
+                        game.screen.blit(game.bullets[i].image, game.bullets[i].rect)
                 else:
                     game.bullets[i].alive = False
+                    
                 game.bullets[i].y -= game.bullets[i].speed
                 game.bullets[i].rect.topleft = (game.bullets[i].x, game.bullets[i].y)
+                
                 for x in range(0, len(game.enemies)):
                     if game.bullets[i].rect.colliderect(game.enemies[x].rect) and (
                         game.enemies[x].damage_cooldown == False):
@@ -127,7 +134,7 @@ class Game(object):
                             game.enemies[x].dead = True
                             print player.score
 
-            game.bullets = [bullet for bullet in game.bullets if bullet.alive]
+            game.bullets[:] = [bullet for bullet in game.bullets if bullet.alive]
             #game.enemies = [enemy for enemy in game.enemies if not enemy.dead]
             #print len(game.bullets)
             
@@ -138,6 +145,9 @@ class Game(object):
         try:
             for i in range(0, len(game.enemies)):
                 if game.enemies[i].dead == False:
+                    if game.enemies[i].y >= game.screen_size[1]+50:
+                        game.enemies_leaked += 1
+                        game.enemies[i].dead = True
                     game.enemies[i].invulnerability()
                     game.screen.blit(game.enemies[i].image, game.enemies[i].rect)
                 game.enemies[i].y += game.enemies[i].speed
@@ -159,6 +169,8 @@ class Game(object):
                 if player.rect.colliderect(game.enemies[i].rect) and game.enemies[i].dead == False and player.damage_cooldown == False:
                     player.health -= 1
                     player.damage_cooldown = True
+
+            game.enemies[:] = [enemy for enemy in game.enemies if enemy.dead == False]
                 
         except NameError:
             pass
@@ -214,7 +226,7 @@ class Enemy(object):
 class Eye(Enemy):
     def __init__(self):
         Enemy.__init__(self)
-        self.speed = 0.8
+        self.speed = random.randint(5, 20)/5
         self.health = 1
         self.damage_wait = 15
         self.movement_factor = 2
@@ -224,7 +236,7 @@ class Eye(Enemy):
 class Grunt(Enemy):
     def __init__(self):
         Enemy.__init__(self)
-        self.speed = 0.45
+        self.speed = 0.60
         self.health = 3
         self.damage_wait = 25
         self.movement_factor = 1
@@ -234,7 +246,7 @@ class Grunt(Enemy):
 class Speedy(Enemy):
     def __init__(self):
         Enemy.__init__(self)
-        self.speed = random.randint(20, 40)/10
+        self.speed = random.randint(20, 40)/5
         self.health = 1
         self.damage_wait = 0
         self.movement_factor = 4
@@ -389,6 +401,10 @@ class Bullet(object):
         self.rect.topleft = (self.x, self.y)
         self.explosion_rect.topleft = (self.x, self.y)
 
+class Explosion(object):
+    def __init__(self, bullet_id):
+        self.explosion_id = bullet_id
+
 class Text(object):
     def __init__(self, location, string, size, color, bg_color, text_type):
         self.x, self.y = location
@@ -413,11 +429,14 @@ player = Player()
 
 # Create all menu text objects.
 game.text_objects.append(Text(
-    (5, 0), " Powerups: %i " % player.powerups, 24, (244, 212, 244), (10, 10, 10), 'powerup')
+    (5, 0), " | Powerups: %i | " % player.powerups, 24, (244, 212, 244), (10, 10, 10), 'powerup')
                          )
 game.text_objects.append(Text(
     (130, 0), "  |  Press 1 to activate powerup  |  Spacebar to shoot basic gun  |  Q to shoot explosive gun  |  ", 18, (212, 212, 244), (10, 10, 10), 'info')
                          )
+game.text_objects.append(Text(
+    (5, 18), " | Level: %i | Score: %i | Enemies leaked: %i | " % (game.wave_level, player.score, game.enemies_leaked), 24, (240, 180, 192), (10, 10, 10), 'score'
+    ))
 
 
 while game.playing:
