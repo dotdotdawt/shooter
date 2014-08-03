@@ -1,39 +1,8 @@
 import pygame
 import sys
 import random
+import wave_template as wave_temp
 
-BASIC_WAVE = {
-    'eye': 11,
-    'grunt': 0,
-    'speedy': 2
-    }
-TERTIARY_WAVE = {
-    'eye': 6,
-    'grunt': 2,
-    'speedy': 2
-    }
-GRUNT_WAVE = {
-    'eye': 0,
-    'grunt': 8,
-    'speedy': 1
-    }
-INVASION_WAVE = {
-    'eye': 25,
-    'grunt': 0,
-    'speedy': 5
-    }
-SPEEDY_WAVE = {
-    'eye': 5,
-    'grunt': 1,
-    'speedy': 15
-    }
-WAVES = {
-    'basic': BASIC_WAVE,
-    'tert': TERTIARY_WAVE,
-    'grunt': GRUNT_WAVE,
-    'invasion': INVASION_WAVE,
-    'speedy': SPEEDY_WAVE
-    }
 ENEMY_TYPES = [
     'eye', 'grunt', 'speedy'
     ]
@@ -74,11 +43,22 @@ class Game(object):
         self.text_objects = []
 
     def initialize_waves(self):
-        self.waves = WAVES
+        self.waves = {}
+        self.wave_types = [ 'basic', 'tert', 'grunt', 'invasion', 'speedy' ]
+        self.enemy_types = [ 'eye', 'grunt', 'speedy' ]
+        self.waves['basic'] = wave_temp.Wave('basic', (11, 0, 2))
+        self.waves['tert'] = wave_temp.Wave('tert', (6, 2, 2))
+        self.waves['grunt'] = wave_temp.Wave('grunt', (0, 8, 1))
+        self.waves['invasion'] = wave_temp.Wave('invasion', (25, 0, 10))
+        self.waves['speedy'] = wave_temp.Wave('speedy', (5, 1, 15))
+        # Random easter egg that turns background red when chaos is on
+        for wave_type in self.wave_types:
+            if self.waves[wave_type].chaos:
+                prev_bg = self.bg_color
+                self.bg_color = (prev_bg[0]+100, prev_bg[1], prev_bg[2])
         self.wave_level = 0
         self.waves_passed = 0
         self.wave_time = 0
-        self.wave_types = [ 'basic', 'tert', 'grunt', 'invasion', 'speedy' ]
         self.wave_level_up_threshold = []
         for i in range(0, len(WAVE_LEVEL_FACTOR)):
             self.wave_level_up_threshold.append(i*WAVES_TO_LEVEL_UP)
@@ -105,17 +85,18 @@ class Game(object):
         self.waves_passed += 1
         self.wave_time = 0
         wave_multiply_factor = WAVE_LEVEL_FACTOR[self.wave_level] * WAVE_CONSTANT
-        for enemy_type in ENEMY_TYPES:
-            for i in range(0, int(self.waves[wave_type][enemy_type] * wave_multiply_factor)):
+        current_wave = self.waves[wave_type]
+        for enemy_type in self.enemy_types:
+            for i in range(0, int(current_wave.enemy_amounts[enemy_type] * wave_multiply_factor)):
                 self.enemies.append(create_enemy(enemy_type))
         self.debug()
 
     def handle_waves(self):
         self.wave_time += 1
-        if self.waves_passed >= self.wave_level_up_threshold[self.wave_level]:
+        if self.waves_passed >= int(self.wave_level_up_threshold[self.wave_level]):
             self.wave_level += 1
         if self.wave_time >= WAVE_INTERVAL:
-            random_wave = random.randint(0, len(WAVES)-1)
+            random_wave = random.randint(0, len(self.wave_types)-1)
             wave_type = self.wave_types[random_wave]
             self.create_wave(wave_type)
 
@@ -260,7 +241,7 @@ class Enemy(object):
         self.image = pygame.image.load("Enemy_Eyeball.png")
         self.rect = self.image.get_rect()
         self.y = 30
-        self.x = random.randint(0, game.screen_size[0])
+        self.x = random.randint(0, game.screen_size[0]-32)
         self.rect.topleft = (self.x, self.y)
         # Trying to make the enemies never spawn on top of each... Figure this out later.
         """
