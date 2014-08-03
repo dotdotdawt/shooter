@@ -3,6 +3,11 @@ import sys
 import random
 import wave_template as wave_temp
 
+
+# GLOBAL CONSTANTS
+# ----------------
+
+# Preloading image file paths as a dictionary full of strings
 IMAGE_PATHS = {
     'player': 'player3.png',
     'eye': 'eye.png',
@@ -10,19 +15,37 @@ IMAGE_PATHS = {
     'grunt_weak': 'grunt_weak.png',
     'speedy': 'speedy.png'
     }
+TEXT_TYPES = [ 'powerup', 'info', 'score' ]
+TEXT_POINTS = {
+    'powerup': (5, 18),
+    'info': (5, 0),
+    'score': (110, 18)
+    }
+TEXT_COLORS = {
+    'powerup': (240, 180, 192),
+    'info': (220, 212, 244),
+    'score': (240, 180, 192)
+    }
+TEXT_SIZES = {
+    'powerup': 24,
+    'info': 18,
+    'score': 24
+    }
+TEXT_BG = (10, 10, 10)
+# List of enemy types in order (order may be required for something later)
 ENEMY_TYPES = [
     'eye', 'grunt', 'speedy'
     ]
+# How much each level multiplies the enemy spawns
 WAVE_LEVEL_FACTOR = [
     1.0, 1.1, 1.25, 1.50, 1.75, 2.0, 2.33, 2.66, 3.00, 3.5, 4.0, 5.0, 7.5, 10.0
     ]
-WAVE_CONSTANT = 0.80
-WAVES_TO_LEVEL_UP = 6
-WAVE_INTERVAL = 150 # In frames
+WAVE_CONSTANT = 0.80 # Reduces wave integers to 80% of original value because they were OP
+WAVES_TO_LEVEL_UP = 6 # How many waves must pass before level increases
+WAVE_INTERVAL = 150 # Time in frames between each wave
 DEAD_BULLET_SPEED_FACTOR = 12 # Probably obsolete but keep it around just in case
-OFFSCREEN_THRESHOLD = 100
-
-pygame.init()
+OFFSCREEN_THRESHOLD = 100 # How much off the screen an object must go to be dereferenced
+PLAYER_EDGE_BUFFER = 16 # How many pixels inside of the user a bullet will spawn at
 
 def create_enemy(enemy_type):
     if enemy_type == 'eye':
@@ -106,18 +129,46 @@ class Game(object):
             random_wave = random.randint(0, len(self.wave_types)-1)
             wave_type = self.wave_types[random_wave]
             self.create_wave(wave_type)
+            
+    def bullet_collision(self, bullet, target):
+        # Bullet collision detects the death of target! Very important!
+        bullet.exploded = True
+        bullet.speed = (bullet.speed / DEAD_BULLET_SPEED_FACTOR)
+        target.damaged_by.append(bullet)
+        target.health -= 1
+        target.damage_cooldown = True
+        # CHECK DEAD SCRIPT!
+        if target.health == 1 and target.type == 'grunt':
+            target.image = pygame.image.load(IMAGE_PATHS['grunt_weak'])
+        if target.health <= 0:
+            player.score += 1
+            self.kill_target(target)
 
+    def kill_target(self, target):
+        target.dead = True
+        # Trying to clear the references to a dead bullet object.
+        # If lag occurs, this is a possible source.
+        try:
+            del target.damaged_by[:]
+        except NameError:
+            pass
+        
     def update_text(self):
         for obj in self.text_objects:
             obj.rect.topleft = (obj.x, obj.y)
-            if obj.text_type == 'powerup':
-                obj.string = " Powerups: %i " % player.powerups
-            elif obj.text_type == 'info':
-                obj.string = " | Press 1 to activate powerup | Spacebar to shoot basic gun | Q to shoot explosive gun | "
-            elif obj.text_type == 'score':
-                obj.string = " | Level: %i | Score: %i | Enemies leaked: %i | " % (self.wave_level, player.score, self.enemies_leaked)
+            obj.string = self.get_updated_string(obj.text_type)
             obj.surf = obj.font.render(obj.string, obj.aa, obj.color, obj.bg_color)
             self.screen.blit(obj.surf, obj.rect)
+
+    def get_updated_string(self, text_type):
+        if text_type == 'powerup':
+            new_string = " Powerups: %i " % player.powerups
+        elif text_type == 'info':
+            new_string = " | Press 1 to activate powerup | Spacebar to shoot basic gun | Q to shoot explosive gun | "
+        elif text_type == 'score':
+            new_string = " | Level: %i | Score: %i | Enemies leaked: %i | " % (self.wave_level, player.score, self.enemies_leaked)
+
+        return new_string
 
     def update_bullets(self):
         # update_bullets is run every frame of the game so we must use a try/except to prevent getting
@@ -205,39 +256,13 @@ class Game(object):
         self.update_bullets()
         self.update_text()
 
-    def bullet_collision(self, bullet, target):
-        # Bullet collision detects the death of target! Very important!
-        bullet.exploded = True
-        bullet.speed = (bullet.speed / DEAD_BULLET_SPEED_FACTOR)
-        target.damaged_by.append(bullet)
-        target.health -= 1
-        target.damage_cooldown = True
-        # CHECK DEAD SCRIPT!
-        if target.health == 1 and target.type == 'grunt':
-            target.image = pygame.image.load(IMAGE_PATHS['grunt_weak'])
-        if target.health <= 0:
-            player.score += 1
-            self.kill_target(target)
-
-    def kill_target(self, target):
-        target.dead = True
-        # Trying to clear the references to a dead bullet object.
-        # If lag occurs, this is a possible source.
-        try:
-            del target.damaged_by[:]
-        except NameError:
-            pass
-
     def handle_events(self):
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.playing = False
                 if event.key == pygame.K_1:
-                    player.consume_powerup()
-
-game = Game()
-        
+                    player.consume_powerup()        
 
 class Enemy(object):
     def __init__(self, enemy_type):
@@ -298,6 +323,16 @@ class Speedy(Enemy):
         self.movement_x = 10
         self.movement_destination = (self.x + self.movement_x)
 
+class Gun(object):
+    def __init__(self, name, attack_speed, damage, projectile_speed, aoe=False):
+        self.cd = 0
+        self.cooldown = False
+        self.name = name
+        self.wait = attack_speed
+        self.damage = damage
+        self.speed = projectile_speed
+        self.aoe = aoe
+        
 class Player(object):
     def __init__(self):
         self.speed = 9.56
@@ -315,33 +350,11 @@ class Player(object):
         self.powerups = 2
         self.powerup_duration = 240
         self.powerup_timer = 0
-        
-        self.shot_gun = {
-            'cd': 0,
-            'cooldown': False,
-            'wait': 40,
-            'damage': 1,
-            'speed': 23
-            }
-        self.laser_gun = {
-            'cd': 0,
-            'cooldown': False,
-            'wait': 4,
-            'damage': 0.5,
-            'speed': 45
-            }
-        self.basic_gun = {
-            'cd': 0,
-            'cooldown': False,
-            'wait': 15,
-            'damage': 5,
-            'speed': 13
-            }
         self.guns = {
-            'basic': self.basic_gun,
-            'shot_gun': self.shot_gun,
-            'laser': self.laser_gun
-            }
+            'shotgun': Gun('shotgun', 40, 1, 23, aoe=True),
+            'laser': Gun('laser', 4, 0.5, 45, aoe=False),
+            'basic': Gun('basic', 15, 5, 13, aoe=False)
+            }        
 
     def check_collision(self, enemy):
         # PLAYER HEALTH DOESNT MATTER YET
@@ -390,14 +403,16 @@ class Player(object):
             player.powerups += 1
 
     def handle_guns(self, keys_pressed):
+        # Spacebar mapped to main gun/laser gun
         if (keys_pressed[pygame.K_SPACE]):
-            if player.powerup and player.guns['laser']['cooldown'] == False:
+            if player.powerup and player.guns['laser'].cooldown == False:
                 game.bullets.append(player.get_new_bullet('laser'))
-            elif player.powerup == False and player.guns['basic']['cooldown'] == False:
+            elif player.powerup == False and player.guns['basic'].cooldown == False:
                 game.bullets.append(player.get_new_bullet('basic'))
 
-        if (keys_pressed[pygame.K_q]) and player.guns['shot_gun']['cooldown'] == False:
-            game.bullets.append(player.get_new_bullet('shot_gun'))
+        # Q key mapped to shotgun
+        if (keys_pressed[pygame.K_q]) and player.guns['shotgun'].cooldown == False:
+            game.bullets.append(player.get_new_bullet('shotgun'))
 
     def handle_movement(self, keys_pressed):
         xMove = 0
@@ -410,7 +425,6 @@ class Player(object):
             xMove -= player.speed
             tempMove = player.check_left((player.x + xMove))
             player.x += (xMove + tempMove)
-            
         player.rect.topleft = (player.x, player.y)
 
     def update_from_input(self, keys_pressed):
@@ -418,12 +432,12 @@ class Player(object):
         self.handle_movement(keys_pressed)
         
     def weapon_cooldowns(self):
-        for weapon in self.guns:   
-            if self.guns[weapon]['cooldown'] == True:
-                self.guns[weapon]['cd'] += 1
-            if self.guns[weapon]['cd'] >= self.guns[weapon]['wait']:
-                self.guns[weapon]['cooldown'] = False
-                self.guns[weapon]['cd'] = 0
+        for gun in self.guns:   
+            if self.guns[gun].cooldown == True:
+                self.guns[gun].cd += 1
+            if self.guns[gun].cd >= self.guns[gun].wait:
+                self.guns[gun].cooldown = False
+                self.guns[gun].cd = 0
             
     def invulnerability(self):
         if self.damage_cooldown == True:
@@ -432,17 +446,18 @@ class Player(object):
             self.damage_cooldown = False
             self.damage_cd = 0
 
-    def get_new_bullet(self, weapon):
-        speed = self.guns[weapon]['speed']
-        self.guns[weapon]['cooldown'] = True
-        if weapon == 'basic':
+    def get_new_bullet(self, gun):
+        position = player.rect.topleft
+        position = position[0], position[1] - player.size[1] + PLAYER_EDGE_BUFFER
+        speed = self.guns[gun].speed
+        self.guns[gun].cooldown = True
+        if gun == 'basic':
             bullet_id = 3
-        elif weapon == 'laser':
+        elif gun == 'laser':
             bullet_id = 2
-        elif weapon == 'shot_gun':
-            bullet_id = 1
-        new_bullet = Bullet(player.rect.topleft, speed, bullet_id)
-        
+        elif gun == 'shot_gun':
+            bullet_id = 1        
+        new_bullet = Bullet(position, speed, bullet_id)
         return new_bullet
 
 class Bullet(object):
@@ -456,21 +471,17 @@ class Bullet(object):
         self.explosion_timer = 0
         file_name = "missile0%i.png" % bullet_id
         self.image = pygame.image.load(file_name)
-        self.explosion = pygame.image.load("explosion.png")
-        pygame.transform.scale(self.explosion, (800, 800))
-        self.explosion_rect = self.explosion.get_rect()
         self.rect = self.image.get_rect()
         self.rect.topleft = (self.x, self.y)
-        self.explosion_rect.topleft = (self.x, self.y)
 
 class Explosion(object):
     def __init__(self, bullet_id):
         self.explosion_id = bullet_id
 
 class Text(object):
-    def __init__(self, location, string, size, color, bg_color, text_type):
+    def __init__(self, location, size, color, bg_color, text_type):
         self.x, self.y = location
-        self.string = string
+        self.string = "" # Set it to empty for now, it gets updated
         self.aa = True
         self.size = size
         self.color = color
@@ -480,26 +491,18 @@ class Text(object):
         self.font = pygame.font.SysFont(self.type, self.size)
         self.surf = self.font.render(self.string, self.aa, self.color, self.bg_color)
         self.rect = self.surf.get_rect()
-        self.rect.topleft = (self.x, self.y)        
+        self.rect.topleft = (self.x, self.y)
+
+def main():
+    global game
+    global player
+    pygame.init()
+    game = Game()
+    player = Player()
+    for text_type in TEXT_TYPES:
+        game.text_objects.append(Text(TEXT_POINTS[text_type], TEXT_SIZES[text_type], TEXT_COLORS[text_type], TEXT_BG, text_type))
         
-bullets = []
-remaining_bullets = []
-enemies = []
-SPEED = 1.5
-spawn_amount = 8
-player = Player()
-
-# Create all menu text objects.
-game.text_objects.append(Text(
-    (5, 0), " | Powerups: %i | " % player.powerups, 24, (244, 212, 244), (10, 10, 10), 'powerup')
-                         )
-game.text_objects.append(Text(
-    (130, 0), "  |  Press 1 to activate powerup  |  Spacebar to shoot basic gun  |  Q to shoot explosive gun  |  ", 18, (212, 212, 244), (10, 10, 10), 'info')
-                         )
-game.text_objects.append(Text(
-    (5, 18), " | Level: %i | Score: %i | Enemies leaked: %i | " % (game.wave_level, player.score, game.enemies_leaked), 24, (240, 180, 192), (10, 10, 10), 'score'
-    ))
-
+main()
 
 while game.playing:
     player.weapon_cooldowns()
