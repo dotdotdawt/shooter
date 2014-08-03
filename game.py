@@ -2,6 +2,7 @@ import pygame
 import sys
 import random
 import wave_template as wave_temp
+import enemy
 
 
 # GLOBAL CONSTANTS
@@ -15,6 +16,7 @@ IMAGE_PATHS = {
     'grunt_weak': 'grunt_weak.png',
     'speedy': 'speedy.png'
     }
+# Text globals
 TEXT_TYPES = [ 'powerup', 'info', 'score' ]
 TEXT_POINTS = {
     'powerup': (5, 18),
@@ -32,14 +34,11 @@ TEXT_SIZES = {
     'score': 24
     }
 TEXT_BG = (10, 10, 10)
+
 # List of enemy types in order (order may be required for something later)
-ENEMY_TYPES = [
-    'eye', 'grunt', 'speedy'
-    ]
+ENEMY_TYPES = [ 'eye', 'grunt', 'speedy' ]
 # How much each level multiplies the enemy spawns
-WAVE_LEVEL_FACTOR = [
-    1.0, 1.1, 1.25, 1.50, 1.75, 2.0, 2.33, 2.66, 3.00, 3.5, 4.0, 5.0, 7.5, 10.0
-    ]
+WAVE_LEVEL_FACTOR = [ 1.0, 1.1, 1.25, 1.50, 1.75, 2.0, 2.33, 2.66, 3.00, 3.5, 4.0, 5.0, 7.5, 10.0 ]
 WAVE_CONSTANT = 0.80 # Reduces wave integers to 80% of original value because they were OP
 WAVES_TO_LEVEL_UP = 6 # How many waves must pass before level increases
 WAVE_INTERVAL = 150 # Time in frames between each wave
@@ -49,11 +48,11 @@ PLAYER_EDGE_BUFFER = 16 # How many pixels inside of the user a bullet will spawn
 
 def create_enemy(enemy_type):
     if enemy_type == 'eye':
-        return Eye()
+        return enemy.Eye(IMAGE_PATHS[enemy_type])
     elif enemy_type == 'grunt':
-        return Grunt()
+        return enemy.Grunt(IMAGE_PATHS[enemy_type])
     elif enemy_type == 'speedy':
-        return Speedy()
+        return enemy.Speedy(IMAGE_PATHS[enemy_type])
     else:
         print '| INVALID INPUT | Could not create enemy: %s' % enemy_type
 
@@ -118,7 +117,11 @@ class Game(object):
         current_wave = self.waves[wave_type]
         for enemy_type in self.enemy_types:
             for i in range(0, int(current_wave.enemy_amounts[enemy_type] * wave_multiply_factor)):
-                self.enemies.append(create_enemy(enemy_type))
+                new_enemy = create_enemy(enemy_type)
+                new_enemy.x = random.randint(0, int(game.screen_size[0] - new_enemy.size[1]))
+                new_enemy.update_position(moved=False)
+                new_enemy.starting_x = new_enemy.x
+                self.enemies.append(new_enemy)
         self.debug()
 
     def handle_waves(self):
@@ -227,7 +230,7 @@ class Game(object):
                     if enemy.y >= game.screen_size[1] + OFFSCREEN_THRESHOLD:
                         self.enemies_leaked += 1
                         self.kill_target(enemy) # Clears all references this enemy has to objects
-                    enemy.update_position()
+                    enemy.update_position(moved=True)
                     player.check_collision(enemy)
 
             # game.enemies references all the enemy objects so we gotta keep that as small
@@ -263,65 +266,6 @@ class Game(object):
                     self.playing = False
                 if event.key == pygame.K_1:
                     player.consume_powerup()        
-
-class Enemy(object):
-    def __init__(self, enemy_type):
-        self.type = enemy_type
-        self.image = pygame.image.load(IMAGE_PATHS[self.type])
-        self.rect = self.image.get_rect()
-        self.y = 30
-        self.x = random.randint(0, game.screen_size[0]-32)
-        self.rect.topleft = (self.x, self.y)
-        # Trying to make the enemies never spawn on top of each... Figure this out later.
-        """
-        for i in range(0, len(enemies)):
-            if enemies[i].rect.colliderect(self.rect):
-                print("WARNING!")
-                self.image = pygame.image.load("missile01.png")
-        """
-        self.starting_x = self.x
-        self.dead = False
-        self.damaged_by = []
-        self.reverse = True
-
-    def get_movement(self):
-        # Not doing this yet.
-        return 0
-
-    def update_position(self):
-        self.y += self.speed
-        self.x += self.get_movement()
-        self.rect.topleft = (self.x, self.y)
-
-class Eye(Enemy):
-    def __init__(self):
-        Enemy.__init__(self, 'eye')
-        self.speed = random.randint(5, 20)/5
-        self.health = 1
-        self.damage_wait = 15
-        self.movement_factor = 2
-        self.movement_x = 5
-        self.movement_destination = (self.x + self.movement_x)
-
-class Grunt(Enemy):
-    def __init__(self):
-        Enemy.__init__(self, 'grunt')
-        self.speed = 0.60
-        self.health = 3
-        self.damage_wait = 25
-        self.movement_factor = 1
-        self.movement_x = 1
-        self.movement_destination = (self.x + self.movement_x)
-
-class Speedy(Enemy):
-    def __init__(self):
-        Enemy.__init__(self, 'speedy')
-        self.speed = random.randint(20, 40)/5
-        self.health = 1
-        self.damage_wait = 0
-        self.movement_factor = 4
-        self.movement_x = 10
-        self.movement_destination = (self.x + self.movement_x)
 
 class Gun(object):
     def __init__(self, name, attack_speed, damage, projectile_speed, aoe=False):
