@@ -1,14 +1,17 @@
+# Shooter by Caleb R. Weir
+# August 2nd, 2014
+
+# 3rd party imports
 import pygame
 import sys
 import random
+
+# Local imports
 import wave_template as wave_temp
 import enemy
+import text
 
-
-# GLOBAL CONSTANTS
-# ----------------
-
-# Preloading image file paths as a dictionary full of strings
+# Large globals
 IMAGE_PATHS = {
     'player': 'player3.png',
     'eye': 'eye.png',
@@ -16,29 +19,11 @@ IMAGE_PATHS = {
     'grunt_weak': 'grunt_weak.png',
     'speedy': 'speedy.png'
     }
-# Text globals
-TEXT_TYPES = [ 'powerup', 'info', 'score' ]
-TEXT_POINTS = {
-    'powerup': (5, 18),
-    'info': (5, 0),
-    'score': (110, 18)
-    }
-TEXT_COLORS = {
-    'powerup': (240, 180, 192),
-    'info': (220, 212, 244),
-    'score': (240, 180, 192)
-    }
-TEXT_SIZES = {
-    'powerup': 24,
-    'info': 18,
-    'score': 24
-    }
-TEXT_BG = (10, 10, 10)
-
-# List of enemy types in order (order may be required for something later)
 ENEMY_TYPES = [ 'eye', 'grunt', 'speedy' ]
-# How much each level multiplies the enemy spawns
+TEXT_TYPES = [ 'powerup', 'info', 'score' ]
 WAVE_LEVEL_FACTOR = [ 1.0, 1.1, 1.25, 1.50, 1.75, 2.0, 2.33, 2.66, 3.00, 3.5, 4.0, 5.0, 7.5, 10.0 ]
+
+# Small globals
 WAVE_CONSTANT = 0.80 # Reduces wave integers to 80% of original value because they were OP
 WAVES_TO_LEVEL_UP = 6 # How many waves must pass before level increases
 WAVE_INTERVAL = 150 # Time in frames between each wave
@@ -46,17 +31,9 @@ DEAD_BULLET_SPEED_FACTOR = 12 # Probably obsolete but keep it around just in cas
 OFFSCREEN_THRESHOLD = 100 # How much off the screen an object must go to be dereferenced
 PLAYER_EDGE_BUFFER = 16 # How many pixels inside of the user a bullet will spawn at
 
-def create_enemy(enemy_type):
-    if enemy_type == 'eye':
-        return enemy.Eye(IMAGE_PATHS[enemy_type])
-    elif enemy_type == 'grunt':
-        return enemy.Grunt(IMAGE_PATHS[enemy_type])
-    elif enemy_type == 'speedy':
-        return enemy.Speedy(IMAGE_PATHS[enemy_type])
-    else:
-        print '| INVALID INPUT | Could not create enemy: %s' % enemy_type
-
 class Game(object):
+    # Game class is the entire display and control (main loop, event handling, etc.)
+    # combined into one.     
     def __init__(self):
         self.playing = True
         self.initialize_displays()
@@ -413,6 +390,8 @@ class Bullet(object):
         self.exploded = False
         self.explosion_duration = 30
         self.explosion_timer = 0
+        # This makes it to where I can just use missile<xx>.png paired with bullet_id
+        # to identify the sprite for a new missile.
         file_name = "missile0%i.png" % bullet_id
         self.image = pygame.image.load(file_name)
         self.rect = self.image.get_rect()
@@ -421,22 +400,17 @@ class Bullet(object):
 class Explosion(object):
     def __init__(self, bullet_id):
         self.explosion_id = bullet_id
-
-class Text(object):
-    def __init__(self, location, size, color, bg_color, text_type):
-        self.x, self.y = location
-        self.string = "" # Set it to empty for now, it gets updated
-        self.aa = True
-        self.size = size
-        self.color = color
-        self.bg_color = bg_color
-        self.text_type = text_type
-        self.type = 'freesansbold.tff'
-        self.font = pygame.font.SysFont(self.type, self.size)
-        self.surf = self.font.render(self.string, self.aa, self.color, self.bg_color)
-        self.rect = self.surf.get_rect()
-        self.rect.topleft = (self.x, self.y)
-
+        
+def create_enemy(enemy_type):
+    if enemy_type == 'eye':
+        return enemy.Eye(IMAGE_PATHS[enemy_type])
+    elif enemy_type == 'grunt':
+        return enemy.Grunt(IMAGE_PATHS[enemy_type])
+    elif enemy_type == 'speedy':
+        return enemy.Speedy(IMAGE_PATHS[enemy_type])
+    else:
+        print '| INVALID INPUT | Could not create enemy: %s' % enemy_type
+        
 def main():
     global game
     global player
@@ -444,7 +418,7 @@ def main():
     game = Game()
     player = Player()
     for text_type in TEXT_TYPES:
-        game.text_objects.append(Text(TEXT_POINTS[text_type], TEXT_SIZES[text_type], TEXT_COLORS[text_type], TEXT_BG, text_type))
+        game.text_objects.append(text.Text(text_type))
         
 main()
 
