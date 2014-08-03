@@ -3,6 +3,13 @@ import sys
 import random
 import wave_template as wave_temp
 
+IMAGE_PATHS = {
+    'player': 'player3.png',
+    'eye': 'eye.png',
+    'grunt': 'grunt.png',
+    'grunt_weak': 'grunt_weak.png',
+    'speedy': 'speedy.png'
+    }
 ENEMY_TYPES = [
     'eye', 'grunt', 'speedy'
     ]
@@ -36,7 +43,7 @@ class Game(object):
 
     def initialize_displays(self):
         self.screen_size = (800, 800)
-        self.bg_color = (50, 20, 50)
+        self.bg_color = (25, 20, 50)
         self.fps_clock = pygame.time.Clock()
         self.screen = pygame.display.set_mode(self.screen_size)
         self.fps = 60
@@ -101,20 +108,16 @@ class Game(object):
             self.create_wave(wave_type)
 
     def update_text(self):
-        # CLEAN UP !
-        #
-        #
-        for i in range(0, len(self.text_objects)):
-            self.text_objects[i].rect.topleft = (self.text_objects[i].x, self.text_objects[i].y)
-            if game.text_objects[i].text_type == 'powerup':
-                game.text_objects[i].string = " Powerups: %i " % player.powerups
-            elif game.text_objects[i].text_type == 'info':
-                game.text_objects[i].string = " | Press 1 to activate powerup | Spacebar to shoot basic gun | Q to shoot explosive gun | "
-            elif game.text_objects[i].text_type == 'score':
-                game.text_objects[i].string = " | Level: %i | Score: %i | Enemies leaked: %i | " % (game.wave_level, player.score, game.enemies_leaked)
-            game.text_objects[i].surf = game.text_objects[i].font.render(
-                game.text_objects[i].string, game.text_objects[i].aa, game.text_objects[i].color, game.text_objects[i].bg_color)
-            game.screen.blit(game.text_objects[i].surf, game.text_objects[i].rect)
+        for obj in self.text_objects:
+            obj.rect.topleft = (obj.x, obj.y)
+            if obj.text_type == 'powerup':
+                obj.string = " Powerups: %i " % player.powerups
+            elif obj.text_type == 'info':
+                obj.string = " | Press 1 to activate powerup | Spacebar to shoot basic gun | Q to shoot explosive gun | "
+            elif obj.text_type == 'score':
+                obj.string = " | Level: %i | Score: %i | Enemies leaked: %i | " % (self.wave_level, player.score, self.enemies_leaked)
+            obj.surf = obj.font.render(obj.string, obj.aa, obj.color, obj.bg_color)
+            self.screen.blit(obj.surf, obj.rect)
 
     def update_bullets(self):
         # update_bullets is run every frame of the game so we must use a try/except to prevent getting
@@ -196,7 +199,8 @@ class Game(object):
 
     def update(self):
         self.screen.fill(self.bg_color)
-        self.screen.blit(player.image, player.rect)
+        psurf, prect = player.update()
+        self.screen.blit(psurf, prect)
         self.update_enemies()
         self.update_bullets()
         self.update_text()
@@ -209,6 +213,8 @@ class Game(object):
         target.health -= 1
         target.damage_cooldown = True
         # CHECK DEAD SCRIPT!
+        if target.health == 1 and target.type == 'grunt':
+            target.image = pygame.image.load(IMAGE_PATHS['grunt_weak'])
         if target.health <= 0:
             player.score += 1
             self.kill_target(target)
@@ -226,19 +232,17 @@ class Game(object):
         for event in pygame.event.get():
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    game.playing = False
+                    self.playing = False
                 if event.key == pygame.K_1:
-                    if player.powerups >= 1:
-                        player.powerup = True
-                        player.powerups -= 1
-                        player.powerup_timer = 0
+                    player.consume_powerup()
 
 game = Game()
         
 
 class Enemy(object):
-    def __init__(self):
-        self.image = pygame.image.load("Enemy_Eyeball.png")
+    def __init__(self, enemy_type):
+        self.type = enemy_type
+        self.image = pygame.image.load(IMAGE_PATHS[self.type])
         self.rect = self.image.get_rect()
         self.y = 30
         self.x = random.randint(0, game.screen_size[0]-32)
@@ -266,7 +270,7 @@ class Enemy(object):
 
 class Eye(Enemy):
     def __init__(self):
-        Enemy.__init__(self)
+        Enemy.__init__(self, 'eye')
         self.speed = random.randint(5, 20)/5
         self.health = 1
         self.damage_wait = 15
@@ -276,7 +280,7 @@ class Eye(Enemy):
 
 class Grunt(Enemy):
     def __init__(self):
-        Enemy.__init__(self)
+        Enemy.__init__(self, 'grunt')
         self.speed = 0.60
         self.health = 3
         self.damage_wait = 25
@@ -286,7 +290,7 @@ class Grunt(Enemy):
 
 class Speedy(Enemy):
     def __init__(self):
-        Enemy.__init__(self)
+        Enemy.__init__(self, 'speedy')
         self.speed = random.randint(20, 40)/5
         self.health = 1
         self.damage_wait = 0
@@ -298,10 +302,10 @@ class Player(object):
     def __init__(self):
         self.speed = 9.56
         self.health = 500
-        self.size = (32, 32)
-        self.image = pygame.image.load("GameCat3.png")
+        self.size = (64, 64)
+        self.image = pygame.image.load(IMAGE_PATHS['player'])
         self.rect = self.image.get_rect()
-        self.x = game.screen_size[0]/2 + 16
+        self.x = game.screen_size[0]/2 + self.size[0]
         self.y = game.screen_size[1] - self.size[1]
         self.damage_cooldown = False
         self.damage_wait = 15
@@ -361,6 +365,16 @@ class Player(object):
             return -player.speed
         else:
             return player.speed
+
+    def update(self):
+        # If any updating to the player needs to be done here. Put this return statement in to keep myself honest
+        return self.image, self.rect
+
+    def consume_powerup(self):
+        if self.powerups >= 1:
+            self.powerup = True
+            self.powerups -= 1
+            self.powerup_timer = 0
 
     def handle_powerups(self):
         # If powerup active
